@@ -12,7 +12,7 @@ import "./libraries/SafeERC20.sol";
 import "hardhat/console.sol";
 
 contract FlashLoan {
-     using SafeERC20 for IERC20;
+    using SafeERC20 for IERC20;
     // Factory and Routing Addresses
     address private constant PANCAKE_FACTORY =
         0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73;
@@ -28,19 +28,25 @@ contract FlashLoan {
     uint256 private deadline = block.timestamp + 1 days;
     uint256 private constant MAX_INT =
         115792089237316195423570985008687907853269984665640564039457584007913129639935;
-    
-    function checkResult(uint _repayAmount,uint _acquiredCoin) pure private returns(bool){
-        return _acquiredCoin>_repayAmount;
+
+    function checkResult(
+        uint _repayAmount,
+        uint _acquiredCoin
+    ) private pure returns (bool) {
+        return _acquiredCoin > _repayAmount;
     }
-    
-     // GET CONTRACT BALANCE
+
+    // GET CONTRACT BALANCE
     // Allows public view of balance for contract
     function getBalanceOfToken(address _address) public view returns (uint256) {
         return IERC20(_address).balanceOf(address(this));
     }
 
-
-    function placeTrade(address _fromToken,address _toToken,uint _amountIn) private returns(uint){
+    function placeTrade(
+        address _fromToken,
+        address _toToken,
+        uint _amountIn
+    ) private returns (uint) {
         address pair = IUniswapV2Factory(PANCAKE_FACTORY).getPair(
             _fromToken,
             _toToken
@@ -55,43 +61,41 @@ contract FlashLoan {
         uint256 amountRequired = IUniswapV2Router01(PANCAKE_ROUTER)
             .getAmountsOut(_amountIn, path)[1];
 
-    
         uint256 amountReceived = IUniswapV2Router01(PANCAKE_ROUTER)
             .swapExactTokensForTokens(
-                _amountIn, 
-                amountRequired, 
+                _amountIn,
+                amountRequired,
                 path,
                 address(this),
-                deadline 
+                deadline
             )[1];
-
 
         require(amountReceived > 0, "Transaction Abort");
 
         return amountReceived;
     }
 
-    function initateArbitrage(address _busdBorrow,uint _amount) external{
-         IERC20(BUSD).safeApprove(address(PANCAKE_ROUTER),MAX_INT);
-         IERC20(CROX).safeApprove(address(PANCAKE_ROUTER),MAX_INT);
-         IERC20(CAKE).safeApprove(address(PANCAKE_ROUTER),MAX_INT);
-         
-         //liquidity pool of BUSD and WBNB
-         address pair = IUniswapV2Factory(PANCAKE_FACTORY).getPair(
+    function initateArbitrage(address _busdBorrow, uint _amount) external {
+        IERC20(BUSD).safeApprove(address(PANCAKE_ROUTER), MAX_INT);
+        IERC20(CROX).safeApprove(address(PANCAKE_ROUTER), MAX_INT);
+        IERC20(CAKE).safeApprove(address(PANCAKE_ROUTER), MAX_INT);
+
+        //liquidity pool of BUSD and WBNB
+        address pair = IUniswapV2Factory(PANCAKE_FACTORY).getPair(
             _busdBorrow,
             WBNB
-         );
+        );
 
-         require(pair!=address(0),"Pool does not exist");
-         
-         address token0 = IUniswapV2Pair(pair).token0();//WBNB
-         address token1 = IUniswapV2Pair(pair).token1();//BUSD
+        require(pair != address(0), "Pool does not exist");
 
-         uint amount0Out = _busdBorrow==token0?_amount:0;
-         uint amount1Out = _busdBorrow==token1?_amount:0; //BUSD Amount
-         
-         bytes memory data = abi.encode(_busdBorrow,_amount,msg.sender);
-         IUniswapV2Pair(pair).swap(amount0Out, amount1Out, address(this), data);
+        address token0 = IUniswapV2Pair(pair).token0(); //WBNB
+        address token1 = IUniswapV2Pair(pair).token1(); //BUSD
+
+        uint amount0Out = _busdBorrow == token0 ? _amount : 0;
+        uint amount1Out = _busdBorrow == token1 ? _amount : 0; //BUSD Amount
+
+        bytes memory data = abi.encode(_busdBorrow, _amount, msg.sender);
+        IUniswapV2Pair(pair).swap(amount0Out, amount1Out, address(this), data);
     }
 
     function pancakeCall(
@@ -130,6 +134,13 @@ contract FlashLoan {
         uint256 trade2Coin = placeTrade(CROX, CAKE, trade1Coin);
         uint256 trade3Coin = placeTrade(CAKE, BUSD, trade2Coin);
 
+        // checking what the values are
+        console.log(loanAmount);
+        console.log(trade1Coin);
+        console.log(trade2Coin);
+        console.log(trade3Coin);
+        console.log(repayAmount);
+
         // Check Profitability
         bool profCheck = checkResult(repayAmount, trade3Coin);
         require(profCheck, "Arbitrage not profitable");
@@ -141,7 +152,4 @@ contract FlashLoan {
         // Pay Loan Back
         IERC20(busdBorrow).transfer(pair, repayAmount);
     }
-
-
-
 }
